@@ -1,0 +1,355 @@
+								-- CLEANING DATA
+
+-- CREATING DATABASE IF NOT THEIR.
+CREATE DATABASE IF NOT EXISTS laptop_db;
+
+-- USING THE DATABASE WE HAVE CREATED.
+USE laptop_db;
+
+-- PREVIEW OF THE DATA.
+SELECT * FROM laptop;
+
+-- NOW FIRST CREATING BACKUP OF OUR DATA SO THAT WE CAN'T LOOSE ACTUAL INFO IF WE UPDATE.
+			-- 1. CREATING TABLE
+CREATE TABLE laptop_backup LIKE laptop;
+
+			-- 2. INSERTING VALUES IN BACKUP TABLE
+INSERT INTO laptop_backup
+SELECT * FROM laptop;
+
+			-- 3. TO SEE BACKUP TABLE
+SELECT * FROM laptop_backup;
+
+-- WE WILL WORK ON `laptop` TABLE AND KEEP `laptop_backup` AS A BACKUP OF OUR DATA.
+SELECT * FROM laptop;
+
+-- FINDING THE NUMBER OF ROWS 
+SELECT COUNT(*) FROM laptop; -- (1303 ROWS)
+
+-- CHECKING THE MEMORY CONSUMPTION FOR REFERENCE
+SELECT `DATA_LENGTH`/1024 FROM information_schema.TABLES
+WHERE TABLE_SCHEMA='laptop_db'
+AND TABLE_NAME='laptop';
+
+-- DROPPING THE UNWANTED COLUMNS FROM THE DATA.
+			-- 1. DROP `Unnamed: 0` COLUMN
+ALTER TABLE laptop DROP COLUMN `Unnamed: 0`;
+
+-- ADDING A COLUMN `Index`
+ALTER TABLE laptop
+ADD `Index` INT AUTO_INCREMENT PRIMARY KEY;
+
+
+-- CHECKING WHERE ALL VALUE IN ROW IS NULL.
+SELECT COUNT(*) FROM laptop
+WHERE Company IS NULL AND TypeName IS NULL AND Inches IS NULL 
+AND ScreenResolution IS NULL AND Cpu IS NULL AND Ram IS NULL AND Memory IS NULL AND
+Gpu IS NULL AND OpSys IS NULL AND Weight IS NULL AND Price IS NULL; 
+
+-- FIND SOME SPECIAL ROWS.(WE NEED TO DROP THIS ROWS).
+SELECT * FROM laptop WHERE Inches=0 AND Price=0;
+
+-- GIVING COUNT OF ROWS WHICH WE NEED TO DROP. (30 ROWS RETURN)
+SELECT COUNT(*) FROM laptop WHERE Inches=0 AND Price=0;
+
+-- DROPPING THESE SPECIAL ROWS.
+ DELETE FROM laptop WHERE Inches=0 AND Price=0;
+ 
+ -- COUNTING ROWS LEFT IN OUR TABLE (1273 ROWS LEFT)
+ SELECT COUNT(*) FROM laptop;
+ 
+ -- CHECKING FOR THE DUPLICATE ROWS IN OUR TABLE
+ SELECT Company,TypeName,Inches,ScreenResolution,Cpu,Ram,Memory,Gpu,OpSys,Weight,Price,COUNT(*) FROM laptop
+ GROUP BY Company,TypeName,Inches,ScreenResolution,Cpu,Ram,Memory,Gpu,OpSys,Weight,Price
+ HAVING COUNT(*)>1;
+ 
+ -- DROPPING THE DUPLICATE ROWS FROM THE TABLE
+ DELETE FROM laptop WHERE `Index` NOT IN (
+ SELECT MIN(`Index`) FROM laptop
+ GROUP BY Company,TypeName,Inches,ScreenResolution,Cpu,Ram,Memory,Gpu,OpSys,Weight,Price);
+ 
+ -- NOW PROCEED FOR FURTHER CLEANING.
+							-- 1. Company Column
+-- TO SEE NAME OF DIFF LAPTOP BRANDS.
+SELECT DISTINCT Company FROM laptop;
+
+-- TO SEE COUNT OF DIFF BRANDS IN OUR TABLE.
+SELECT COUNT(DISTINCT Company) FROM laptop;
+
+							-- 2. TypeName
+-- TO SEE DIFF TYPENAME
+SELECT DISTINCT(TypeName) FROM laptop;
+
+-- TO SEE COUNT OF TYPENAME
+SELECT COUNT(DISTINCT TypeName) FROM laptop;
+
+							-- 3. Inches
+-- CASTING IT INTO DECIMAL.
+ALTER TABLE laptop MODIFY COLUMN Inches DECIMAL(10,1);
+
+							-- 4. Ram
+-- REMOVING `GB` USING REPLACE AND UPDATING RAM COLUMN.
+UPDATE laptop
+SET Ram=REPLACE(Ram,'GB','');
+
+-- COVERTING RAM COLUMN DATATYPE INTO INT.
+ALTER TABLE laptop MODIFY COLUMN Ram INTEGER;
+
+								-- 5. Weight
+-- REMOVING `kg` USING REPLACE AND UPDATING `Weight` COLUMN.
+UPDATE laptop
+SET Weight=REPLACE(Weight,"kg",'');
+
+-- CONVERTING WEIGHT VOLUMN DATAYPE INTO DECIMAL.
+ALTER TABLE laptop MODIFY COLUMN Weight DECIMAL(10,2);
+
+								-- 6. Price
+-- ROUND OF THE PRICE
+UPDATE laptop
+SET Price=ROUND(Price);
+
+-- CONVERTING INTO INTEGER DATATYPE
+ALTER TABLE laptop MODIFY COLUMN Price INTEGER;
+
+								-- 7. OpSys
+-- DISTINCT OPERATING SYSTEM NAME
+SELECT DISTINCT(opSys) FROM laptop;
+
+-- SEE COUNT OF DIFF BRANDS
+SELECT opSys,COUNT(*) FROM laptop
+GROUP BY opSys;
+
+-- LET'S CLEAN BY MAKING THESE BRAND
+-- WINDOW
+-- MAC
+-- LINUX
+-- NO OS
+-- ANDROID CHROME (OTHERS)
+-- LET'S UPDATE
+UPDATE laptop
+SET opSys=CASE
+	WHEN opSys LIKE '%mac%' THEN 'macos'
+    WHEN opSys LIKE '%windows%' THEN 'windows'
+	WHEN opSys LIKE '%linux%' THEN 'linux'
+    WHEN opSys LIKE '%No OS%' THEN 'No os'
+    ELSE 'other'
+END;
+				
+									-- 8.Gpu
+-- MAKING TWO DIFF NEW COLUMN
+ALTER TABLE laptop
+ADD COLUMN gpu_brand VARCHAR(255) AFTER Gpu,
+ADD COLUMN gpu_name VARCHAR(255) AFTER gpu_brand;
+
+-- UPDATING GPU_BRAND COLUMN BY EXTRACTING BRAND FROM GPU COLUMN.
+UPDATE laptop
+SET gpu_brand=SUBSTRING_INDEX(Gpu,' ',1);
+
+-- UPDATING GPU_NAME COLUMN BY EXTRACTING NAME FROM GPU COLUMN.
+UPDATE laptop
+SET gpu_name=REPLACE(Gpu,gpu_brand,'');
+
+-- DROPPING GPU COLUMN NO REQUIREMENT NOW.
+ALTER TABLE laptop DROP COLUMN Gpu;
+
+								-- 9. Cpu
+-- EXTRACTING FEATURES FROM THE CPU AND SEPERATING THEM BY MAKING NEW COLUMN
+ALTER TABLE laptop
+ADD COLUMN cpu_brand VARCHAR(255) AFTER cpu,
+ADD COLUMN cpu_name VARCHAR(255) AFTER cpu_brand,
+ADD COLUMN cpu_speed DECIMAL(10,1) AFTER cpu_name;
+
+-- NOW FILLING THEM FROM EXISTING COLUMN CPU.
+UPDATE laptop
+SET cpu_brand=SUBSTRING_INDEX(Cpu," ",1);
+
+UPDATE laptop
+SET cpu_speed=CAST(REPLACE(SUBSTRING_INDEX(Cpu," ",-1),'GHz','') AS DECIMAL(10,1));
+
+UPDATE laptop
+SET cpu_name=REPLACE(REPLACE(Cpu,SUBSTRING_INDEX(Cpu,' ',-1),''),cpu_brand,'');
+
+-- DROPPING COLUMN CPU
+ALTER TABLE laptop DROP COLUMN Cpu;
+
+								-- 10.ScreenResolution
+-- EXTRACTING FEATURES FROM THE SCREENRESOLUTION COLUMN.
+-- EXTRACTING DISPLAY SIZE FROM EXISTING COLUMN. 
+SELECT ScreenResolution,SUBSTRING_INDEX(SUBSTRING_INDEX(ScreenResolution,' ',-1),'x',1),SUBSTRING_INDEX(SUBSTRING_INDEX(ScreenResolution,' ',-1),'x',-1) FROM laptop;
+
+-- MAKING NEW COLUMN 
+ALTER TABLE laptop
+ADD COLUMN resolution_width INTEGER AFTER ScreenResolution,
+ADD COLUMN resolution_height INTEGER AFTER resolution_width;
+
+-- UPDATING NEW COLUMN
+UPDATE laptop
+SET resolution_width=SUBSTRING_INDEX(SUBSTRING_INDEX(ScreenResolution,' ',-1),'x',1);
+
+UPDATE laptop
+SET resolution_height=SUBSTRING_INDEX(SUBSTRING_INDEX(ScreenResolution,' ',-1),'x',-1);
+
+-- MAKING ANOTHER COLUMN WHICH CONTAIN INFORMATION WHETHER LAPTOP IS TOUCHSCREEN OR NOT.
+ALTER TABLE laptop
+ADD COLUMN is_touchscreen INTEGER AFTER resolution_height;
+
+-- FILLING VALUE
+UPDATE laptop 
+SET is_touchscreen=ScreenResolution LIKE '%touch%';
+
+-- DROPPING THE SCREENRESOLUTION COLUMN
+ALTER TABLE laptop 
+DROP COLUMN ScreenResolution;
+
+								-- 11. cpu_name
+-- Making i5 AND IT'S RELATED ,i7 AND IT'S RELATED PROCESSOR SAME.
+SELECT cpu_name,SUBSTRING_INDEX(TRIM(cpu_name),' ',2) FROM laptop;
+
+UPDATE laptop
+SET cpu_name=SUBSTRING_INDEX(TRIM(cpu_name),' ',2);
+
+								-- 12. Memory
+-- EXTRACTING FEATURES FROM THE MEMORY COLUMN
+ALTER TABLE laptop
+ADD COLUMN memory_type VARCHAR(255) AFTER Memory,
+ADD COLUMN primary_storage INTEGER AFTER memory_type,
+ADD COLUMN secondary_storage INTEGER AFTER primary_storage;
+
+SELECT Memory,
+CASE
+	WHEN Memory LIKE '%SSD%' AND Memory LIKE '%HDD%' THEN 'Hybrid'
+    WHEN Memory LIKE '%SSD%' AND Memory LIKE '%TB%' THEN 'Hybrid'
+	WHEN Memory LIKE '%Flash%' AND Memory LIKE '%HDD%' THEN 'Hybrid'
+    WHEN Memory LIKE '%SSD%' THEN 'SSD'
+    WHEN Memory LIKE '%HDD%' THEN 'HDD'
+    WHEN Memory LIKE '%Flash%' THEN 'Flash Storage'
+    WHEN Memory LIKE '%Hybrid%' THEN 'Hybrid'
+    ELSE NULL
+END AS 'memory_type'
+FROM laptop;
+
+-- UPDATING MEMORY_TYPE COLUMN.
+UPDATE laptop
+SET memory_type=CASE
+	WHEN Memory LIKE '%SSD%' AND Memory LIKE '%HDD%' THEN 'Hybrid'
+    WHEN Memory LIKE '%SSD%' AND Memory LIKE '%TB%' THEN 'Hybrid'
+	WHEN Memory LIKE '%Flash%' AND Memory LIKE '%HDD%' THEN 'Hybrid'
+    WHEN Memory LIKE '%SSD%' THEN 'SSD'
+    WHEN Memory LIKE '%HDD%' THEN 'HDD'
+    WHEN Memory LIKE '%Flash%' THEN 'Flash Storage'
+    WHEN Memory LIKE '%Hybrid%' THEN 'Hybrid'
+    ELSE NULL
+END;
+
+SELECT Memory,REGEXP_SUBSTR(SUBSTRING_INDEX(Memory,'+',1),'[0-9]+'),
+CASE WHEN Memory LIKE '%+%' THEN REGEXP_SUBSTR(SUBSTRING_INDEX(Memory,'+',-1),'[0-9]+') ELSE 0 END
+FROM laptop;
+
+UPDATE laptop
+SET primary_storage = REGEXP_SUBSTR(SUBSTRING_INDEX(Memory,'+',1),'[0-9]+'),
+secondary_storage= CASE WHEN Memory LIKE '%+%' THEN REGEXP_SUBSTR(SUBSTRING_INDEX(Memory,'+',-1),'[0-9]+') ELSE 0 END;
+
+									-- 13. primary_storage and secondary_storage
+-- VALUE 1 REPRESENT 1TB = 1024GB
+SELECT primary_storage,secondary_storage,
+CASE WHEN primary_storage<=2 THEN primary_storage*1024 ELSE primary_Storage END,
+CASE WHEN secondary_storage<=2 THEN secondary_storage*1024 ELSE secondary_Storage END
+FROM laptop;
+
+UPDATE laptop
+SET primary_storage=CASE WHEN primary_storage<=2 THEN primary_storage*1024 ELSE primary_Storage END,
+secondary_storage=CASE WHEN secondary_storage<=2 THEN secondary_storage*1024 ELSE secondary_Storage END;
+
+-- DROPPING COLUMN MEMORY
+ALTER TABLE laptop DROP COLUMN Memory;
+
+
+									-- PERFORMING EDA 
+-- FIRST FIVE ROWS
+SELECT * FROM laptop
+ORDER BY `index` LIMIT 5;
+
+-- LAST FIVE ROWS
+SELECT * FROM laptop
+ORDER BY `index` LIMIT 5;
+
+-- SAMPLE
+SELECT * FROM laptop
+ORDER BY RAND() LIMIT 5;
+
+-- PRICE COL (NUMERICAL COLUMN)
+-- FINDING 8 NUMBER SUMMARY OF PRICE COLUMN
+SELECT COUNT(Price) OVER(),
+MIN(Price) OVER(),
+MAX(Price) OVER(),
+AVG(Price) OVER(),
+STD(Price) OVER(),
+PERCENTILE_CONT(0.25) WITHIN GROUP(ORDER BY Price) OVER() AS 'Q1',
+PERCENTILE_CONT(0.5) WITHIN GROUP(ORDER BY Price) OVER() AS 'Median',
+PERCENTILE_CONT(0.75) WITHIN GROUP(ORDER BY Price) OVER() AS 'Q3'
+FROM laptop
+ORDER BY `index` LIMIT 1;
+
+-- MISSING VALUE IN PRICE COLUMN
+SELECT COUNT(*) FROM laptop WHERE Price IS NULL;
+
+-- FINDING OUTLIERS IN PRICE COLUMN
+SELECT * FROM (
+SELECT *,
+PERCENTILE_CONT(0.25) WITHIN GROUP(ORDER BY Price) OVER() AS 'Q1',
+PERCENTILE_CONT(0.75) WITHIN GROUP(ORDER BY Price) OVER() AS 'Q3'
+FROM laptop ) t
+WHERE t.Price < t.Q1 - (1.5*(t.Q3-t.Q1)) OR
+t.Price > t.Q1 + (1.5*(t.Q3-t.Q1));
+
+-- CREATING HISTOGRAM OF PRICE COLUMN
+SELECT t.buckets,COUNT(*),REPEAT('*',COUNT(*)) FROM (SELECT Price,
+CASE 
+	WHEN Price BETWEEN 0 AND 25000 THEN '0-25K'
+    WHEN Price BETWEEN 25001 AND 50000 THEN '25K-50K'
+    WHEN Price BETWEEN 50001 AND 75000 THEN '50K-75K'
+    WHEN Price BETWEEN 75001 AND 100000 THEN '75K-100K'
+    ELSE '>100K'
+END AS 'buckets'
+FROM laptop) t
+GROUP BY buckets;
+
+-- COMPANY (CATEGORICAL COLUMN)
+SELECT Company,COUNT(*) FROM laptop
+GROUP BY Company;
+
+-- CALCULATING PERECENTAGE SHARE
+SELECT t.Company,(t.num/(SELECT COUNT(Company) FROM laptop))*100 AS 'per_contro' FROM (
+SELECT Company,COUNT(*) AS 'num' FROM laptop
+GROUP BY Company ) t;
+
+-- TOUCHSCREEN AND COMPANY (CATEGORICAL AND CATEGORICAL)
+-- CONTIGENCY TABLE
+SELECT Company,
+SUM(CASE WHEN is_touchscreen=1 THEN 1 ELSE 0 END) AS 'touchscreen_yes',
+SUM(CASE WHEN is_touchscreen=0 THEN 1 ELSE 0 END) AS 'touchscreen_no'
+FROM laptop
+GROUP BY Company;
+
+-- COMPANY AND PRICE COLUMN (CATEGORICAL AND NUMERICAL COLUMN)
+SELECT Company,MIN(Price),MAX(Price),AVG(Price),STD(Price)
+FROM laptop
+GROUP BY Company;
+
+										-- FEATURE ENGINERRING
+
+-- MAKING PPI COLUMN FROM SOME EXISTING COLUMN
+ALTER TABLE laptop ADD COLUMN ppi INTEGER;
+
+SELECT ROUND(SQRT(resolution_width*resolution_width+resolution_height*resolution_height)/Inches) FROM laptop;
+
+UPDATE laptop
+SET ppi=ROUND(SQRT(resolution_width*resolution_width+resolution_height*resolution_height)/Inches);
+
+								-- ONE HOT ENCODING
+SELECT gpu_brand,
+CASE WHEN gpu_brand='Intel' THEN 1 ELSE 0 END AS 'intel',
+CASE WHEN gpu_brand='AMD' THEN 1 ELSE 0 END AS 'amd',
+CASE WHEN gpu_brand='nvidia' THEN 1 ELSE 0 END AS 'nvidia',
+CASE WHEN gpu_brand='arm' THEN 1 ELSE 0 END AS 'arm'
+FROM laptop;
